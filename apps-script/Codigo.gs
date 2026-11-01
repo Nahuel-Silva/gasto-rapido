@@ -93,6 +93,7 @@ function doPost(e) {
       case 'agregar': return json_(Object.assign({ ok: true }, agregar_(req.items || [])));
       case 'regla': return json_(Object.assign({ ok: true }, agregarRegla_(req.palabra, req.categoria)));
       case 'resumen': return json_(Object.assign({ ok: true }, resumen_(req.mes)));
+      case 'cuota': return json_(Object.assign({ ok: true }, agregarCuota_(req)));
       default: return json_({ ok: false, error: 'Acción desconocida: ' + req.accion });
     }
   } catch (err) {
@@ -214,6 +215,60 @@ function agregarRegla_(palabra, categoria) {
   return { regla: [palabra, categoria], actualizada: false };
 }
 
+/* ------------------------------------------------------------------ tarjeta y cuotas */
+
+const CUOTAS = { hoja: 'Cuotas', fila: 5, filas: 40 }; // A Compra · B Dónde · C Precio por cuota · D Cant. cuotas · E Primer mes
+
+function agregarCuota_(req) {
+  const compra = String(req.compra || '').replace(/^[=+\-@]+/, '').trim().slice(0, 60);
+  const donde = req.donde === 'Aparte' ? 'Aparte' : 'Tarjeta';
+  const precio = Math.round(Math.abs(Number(req.precio)) * 100) / 100;
+  const cuotas = Math.round(Number(req.cuotas));
+  const m = /^(\d{4})-(\d{2})$/.exec(String(req.primerMes || ''));
+  if (!compra || !(precio > 0) || !(cuotas >= 1 && cuotas <= 72) || !m) throw new Error('Compra en cuotas inválida.');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(CUOTAS.hoja);
+    const a = sh.getRange(CUOTAS.fila, 1, CUOTAS.filas, 1).getValues();
+    let libre = -1;
+    for (let i = 0; i < a.length; i++) { if (String(a[i][0]).trim() === '') { libre = i; break; } }
+    if (libre < 0) throw new Error('La hoja Cuotas está llena: borrá compras viejas ya pagadas para hacer lugar.');
+    const fila = CUOTAS.fila + libre;
+    sh.getRange(fila, 1, 1, 5).setValues([[compra, donde, precio, cuotas, new Date(Number(m[1]), Number(m[2]) - 1, 1, 12)]]);
+    sh.getRange(fila, 5).setNumberFormat('mmm yyyy');
+    SpreadsheetApp.flush();
+    return { fila, compra, donde, precio, cuotas, primerMes: m[0] };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Qué vence en el mes, el siguiente, deuda pendiente y compras activas. */
+function tarjeta_(y, mo) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(CUOTAS.hoja);
+  const vals = sh.getRange(CUOTAS.fila, 1, CUOTAS.filas, 5).getValues();
+  const idx = (d) => d.getFullYear() * 12 + d.getMonth();
+  const hoy = y * 12 + mo;
+  let esteMes = 0, proximo = 0, deuda = 0;
+  const porDonde = { Tarjeta: 0, Aparte: 0 };
+  const compras = [];
+  vals.forEach((r) => {
+    const compra = String(r[0]).trim(), donde = String(r[1] || 'Tarjeta'), precio = Number(r[2]) || 0, n = Number(r[3]) || 0, f = r[4];
+    if (!compra || !precio || !n || !(f instanceof Date)) return;
+    const ini = idx(f), fin = ini + n - 1;
+    if (hoy >= ini && hoy <= fin) { esteMes += precio; porDonde[donde === 'Aparte' ? 'Aparte' : 'Tarjeta'] += precio; }
+    if (hoy + 1 >= ini && hoy + 1 <= fin) proximo += precio;
+    const restantes = Math.max(0, fin - Math.max(hoy, ini - 1));
+    deuda += restantes * precio;
+    if (fin >= hoy) {
+      compras.push({ compra, donde, precio, cuotas: n, actual: Math.min(n, Math.max(0, hoy - ini + 1)), primerMes: fmtMes_(Math.floor(ini / 12), ini % 12) });
+    }
+  });
+  return { esteMes: round2_(esteMes), proximo: round2_(proximo), deuda: round2_(deuda), porDonde, compras };
+}
+
 /* ------------------------------------------------------------------ resumen */
 
 function resumen_(mes) {
@@ -224,7 +279,7 @@ function resumen_(mes) {
 
   const sh = SpreadsheetApp.getActive().getSheetByName(HOJA_MOV);
   const ult = primeraFilaLibre_(sh) - 1;
-  if (ult < 2) return { mes: fmtMes_(y, mo), ingresos: 0, gastos: 0, categorias: [], ultimos: [] };
+  if (ult < 2) return { mes: fmtMes_(y, mo), ingresos: 0, gastos: 0, categorias: [], ultimos: [], tarjeta: tarjeta_(y, mo) };
   const datos = sh.getRange(2, 1, ult - 1, COL.origen).getValues();
 
   let ingresos = 0, gastos = 0;
@@ -251,7 +306,7 @@ function resumen_(mes) {
     fecha: r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
     tipo: r[1], desc: r[2], monto: Number(r[3]) || 0, medio: r[4], cat: r[COL.catFinal - 1]
   }));
-  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos };
+  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo) };
 }
 
 /* ------------------------------------------------------------------ util */

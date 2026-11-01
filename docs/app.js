@@ -393,10 +393,68 @@ async function loadResumen() {
     const top = (r.categorias || []).slice(0, 7); const max = Math.max(1, ...top.map((c) => c.monto));
     $("#mbars").innerHTML = top.length ? top.map((c) => `<div class="bar"><span class="n">${esc(c.cat)}</span><span class="t"><i style="width:${(c.monto / max) * 100}%"></i></span><span class="v">${fmtMoney(c.monto)}</span></div>`).join("") : `<p class="hint">Todavía no hay gastos este mes.</p>`;
     $("#mlast").innerHTML = (r.ultimos || []).map((u) => `<div><span class="d">${u.fecha ? fmtDate(u.fecha).slice(0, 5) : ""}</span><span class="s">${esc(u.desc)} <small class="hint">· ${esc(u.tipo === "Ingreso" ? "INGRESO" : u.cat || "")}</small></span><span class="m" style="color:${u.tipo === "Ingreso" ? "var(--good)" : "inherit"}">${u.tipo === "Ingreso" ? "+" : ""}${fmtMoney(u.monto)}</span></div>`).join("") || `<p class="hint">Sin movimientos.</p>`;
+    renderTarjeta(r.tarjeta);
     if (remote && remote.url) { const a = $("#mopen"); a.href = remote.url; a.hidden = false; }
   } catch (e) { /* el resumen es opcional */ }
 }
 $("#mref").onclick = () => loadRemote(false);
+
+/* ---------- tarjeta ---------- */
+let lastTarjeta = null;
+function mesLabel(ym) { const [y, m] = ym.split("-"); return `${MESES[+m - 1].slice(0, 3)} ${y}`; }
+function addMonths(ym, n) { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function renderTarjeta(t) {
+  lastTarjeta = t || null;
+  const box = $("#tcard");
+  if (!t) { box.hidden = true; return; }
+  box.hidden = false;
+  $("#tv1").textContent = fmtMoney(t.esteMes); $("#tv2").textContent = fmtMoney(t.proximo); $("#tv3").textContent = fmtMoney(t.deuda);
+  $("#tpay").disabled = !(t.porDonde && t.porDonde.Tarjeta > 0);
+  $("#tpay").textContent = t.porDonde && t.porDonde.Tarjeta > 0 ? `Cargar pago del resumen (${fmtMoney(t.porDonde.Tarjeta)})` : "Nada que pagar este mes";
+  $("#tlist").innerHTML = (t.compras || []).map((c) => {
+    const estado = c.actual >= 1 ? `cuota ${c.actual}/${c.cuotas}` : `arranca ${mesLabel(c.primerMes)}`;
+    return `<div><span class="q">${estado}</span><span class="s">${esc(c.compra)} <small class="hint">· ${esc(c.donde)}</small></span><span class="m">${fmtMoney(c.precio)}</span></div>`;
+  }).join("") || `<p class="hint">No tenés cuotas activas.</p>`;
+}
+$("#tpay").onclick = () => {
+  if (!lastTarjeta || !(lastTarjeta.porDonde.Tarjeta > 0)) return;
+  addItems([mk({ fecha: iso(today()), tipo: "Gasto", desc: "Pago resumen tarjeta", monto: lastTarjeta.porDonde.Tarjeta, medio: DEF_MEDIO(), cat: CATS().includes("TARJETA") ? "TARJETA" : "", catSrc: "manual" })], "página");
+  toast("Agregado a la lista. Ajustá el monto si el resumen vino distinto y guardalo");
+};
+function fillMeses() {
+  const now = iso(today()).slice(0, 7);
+  $("#kmes").innerHTML = [0, 1, 2].map((n) => { const ym = addMonths(now, n); return `<option value="${ym}" ${n === 1 ? "selected" : ""}>${cap(mesLabel(ym))}${n === 0 ? " (este mes)" : n === 1 ? " (el que viene)" : ""}</option>`; }).join("");
+}
+function cuotaPreview() {
+  const compra = $("#kcompra").value.trim(); const monto = Math.abs(parseAmount($("#kmonto").value));
+  const n = +$("#kcuotas").value; const porCuota = $("#ktipo").value === "cuota";
+  const box = $("#kprev");
+  if (!monto || !n) { box.hidden = true; $("#kadd").disabled = true; return null; }
+  const precio = Math.round((porCuota ? monto : monto / n) * 100) / 100;
+  const total = Math.round(precio * n * 100) / 100;
+  const ini = $("#kmes").value, fin = addMonths(ini, n - 1);
+  box.hidden = false;
+  box.innerHTML = n === 1
+    ? `Un pago de <b>${fmtMoney(precio)}</b> en el resumen de ${mesLabel(ini)}.`
+    : `<b>${n} cuotas de ${fmtMoney(precio)}</b> (total ${fmtMoney(total)}), de ${mesLabel(ini)} a ${mesLabel(fin)}.`;
+  $("#kadd").disabled = !compra;
+  return { compra, precio, cuotas: n, primerMes: ini, donde: $("#kdonde").value };
+}
+["#kcompra", "#kmonto"].forEach((s) => $(s).addEventListener("input", cuotaPreview));
+["#ktipo", "#kcuotas", "#kmes", "#kdonde"].forEach((s) => $(s).addEventListener("change", cuotaPreview));
+$("#kadd").onclick = async () => {
+  const c = cuotaPreview(); if (!c || !c.compra) return;
+  if (!conn) { $("#setup").hidden = false; toast("Conectá tu planilla para guardar compras con tarjeta"); return; }
+  const b = $("#kadd"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
+  try {
+    await api("cuota", c);
+    toast(`Guardada: ${c.compra}, ${c.cuotas === 1 ? "1 pago" : c.cuotas + " cuotas"} de ${fmtMoney(c.precio)}`);
+    $("#kcompra").value = ""; $("#kmonto").value = ""; cuotaPreview(); loadResumen();
+  } catch (e) {
+    toast(/desconocida/i.test(e.message) ? "Actualizá el script de la planilla para usar esta función (ver README)" : e.message);
+  }
+  b.textContent = "Guardar compra"; cuotaPreview();
+};
 
 /* ---------- reglas ---------- */
 async function addRule(k, c) {
@@ -491,4 +549,4 @@ function toast(msg, undo) {
   t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), undo ? 6000 : 4000);
 }
 
-fillSelects(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);
+fillSelects(); fillMeses(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);

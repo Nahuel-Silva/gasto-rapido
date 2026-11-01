@@ -46,6 +46,7 @@
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="t-escribir" aria-selected="true" data-p="p-escribir">Escribir</button>
         <button class="tab" role="tab" id="t-extracto" aria-selected="false" data-p="p-extracto">Extracto del banco</button>
+        <button class="tab" role="tab" id="t-tarjeta" aria-selected="false" data-p="p-tarjeta">Tarjeta</button>
         <button class="tab" role="tab" id="t-fijos" aria-selected="false" data-p="p-fijos">Fijos del mes</button>
       </div>
 
@@ -74,6 +75,24 @@
         <div id="xmap" class="map" hidden></div>
         <div id="xinfo"></div>
         <div class="row"><button class="btn primary" id="xadd" disabled>Agregar movimientos</button></div>
+      </div>
+
+      <div class="panel" id="p-tarjeta" role="tabpanel" hidden>
+        <p class="hint">Compras con tarjeta de crédito, en cuotas o en un pago. Se guardan en la hoja <b>Cuotas</b> y no tocan tu saldo hasta que pagás el resumen.</p>
+        <div class="tform">
+          <label class="wide">Qué compraste<input id="kcompra" placeholder="Freidora" autocomplete="off"></label>
+          <label>Monto<input id="kmonto" inputmode="decimal" placeholder="122.891,58" autocomplete="off"></label>
+          <label>El monto es
+            <select id="ktipo"><option value="total">Total de la compra</option><option value="cuota">Lo de cada cuota</option></select>
+          </label>
+          <label>Cuotas
+            <select id="kcuotas"><option>1</option><option>2</option><option selected>3</option><option>6</option><option>9</option><option>12</option><option>18</option><option>24</option></select>
+          </label>
+          <label>Primer resumen<select id="kmes"></select></label>
+          <label>Dónde<select id="kdonde"><option value="Tarjeta">Tarjeta</option><option value="Aparte">Aparte (a alguien, otra tarjeta)</option></select></label>
+        </div>
+        <div id="kprev" class="notice" hidden></div>
+        <div class="row"><button class="btn primary" id="kadd" disabled>Guardar compra</button></div>
       </div>
 
       <div class="panel" id="p-fijos" role="tabpanel" hidden>
@@ -122,6 +141,15 @@
           <div class="kpi"><span>Resultado</span><b id="mr">–</b></div>
         </div>
         <div class="bars" id="mbars"></div>
+      </div>
+      <div class="tcard" id="tcard" hidden>
+        <div class="thead"><h3>Tarjeta</h3><button class="btn small" id="tpay">Cargar pago del resumen</button></div>
+        <div class="kpis">
+          <div class="kpi g"><span>Vence este mes</span><b id="tv1">–</b></div>
+          <div class="kpi"><span>Mes que viene</span><b id="tv2">–</b></div>
+          <div class="kpi"><span>Deuda en cuotas</span><b id="tv3">–</b></div>
+        </div>
+        <div class="last" id="tlist"></div>
       </div>
       <div>
         <p class="hint" style="margin:0 0 4px">Últimos cargados</p>
