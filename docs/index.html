@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gasto Rápido</title>
+<meta name="description" content="Cargá tus gastos en segundos y se guardan en tu planilla de Google Sheets.">
+<meta name="theme-color" content="#0F766E">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gasto Rápido">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Gasto <span>Rápido</span></h1>
+      <p>Cargá en segundos. Se guarda en tu planilla.</p>
+    </div>
+    <span id="sync" class="pill"><i></i><span>Sin conectar</span></span>
+  </header>
+
+  <section class="setup" id="setup" hidden>
+    <h2>Conectá tu planilla</h2>
+    <ol>
+      <li>En tu planilla: menú <b>Gasto Rápido → Ver clave actual</b> y copiala.</li>
+      <li>Pegá acá la dirección del script (termina en <code class="mono">/exec</code>) y la clave.</li>
+    </ol>
+    <div class="conn">
+      <input id="curl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" aria-label="Dirección del script">
+      <input id="cclave" type="password" placeholder="Clave" autocomplete="off" aria-label="Clave">
+      <button class="btn primary" id="cgo">Conectar</button>
+    </div>
+    <p class="hint" id="cmsg">Mientras tanto podés ir cargando: queda guardado en este dispositivo hasta que conectes.</p>
+  </section>
+
+  <div class="grid">
+    <section class="card" aria-label="Cargar movimientos">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="t-escribir" aria-selected="true" data-p="p-escribir">Escribir</button>
+        <button class="tab" role="tab" id="t-extracto" aria-selected="false" data-p="p-extracto">Extracto del banco</button>
+        <button class="tab" role="tab" id="t-fijos" aria-selected="false" data-p="p-fijos">Fijos del mes</button>
+      </div>
+
+      <div class="panel" id="p-escribir" role="tabpanel">
+        <p class="hint">Una línea por movimiento, como lo dirías. El monto puede ir con puntos o comas, y la categoría se pone sola.</p>
+        <label for="quick" class="sr">Movimientos</label>
+        <textarea id="quick" spellcheck="false" placeholder="cabi 3500&#10;vea 143.860 santander&#10;ayer kfc 18880&#10;28/10 farmacia 39674,36&#10;+ingreso 155000 icbc&#10;pan 1500 efectivo"></textarea>
+        <div id="qprev" class="preview" aria-live="polite"></div>
+        <div class="row">
+          <button class="btn primary" id="qadd">Agregar a la lista</button>
+          <span class="hint">o <code>Ctrl</code>+<code>Enter</code></span>
+        </div>
+        <p class="hint">Fecha: <code>hoy</code> (si no ponés nada), <code>ayer</code>, <code>28/10</code>. Medio: <code>icbc</code>, <code>santander</code>, <code>efectivo</code>, <code>mp</code>. Ingreso: empezá con <code>+</code>. Forzar categoría: <code>#salidas</code>.</p>
+      </div>
+
+      <div class="panel" id="p-extracto" role="tabpanel" hidden>
+        <p class="hint">Descargá los movimientos desde el home banking (Excel o CSV) y soltalos acá. También podés copiar la tabla de la web del banco y pegarla.</p>
+        <div class="row">
+          <label class="hint" for="xmedio">Cuenta de este extracto</label>
+          <select id="xmedio"></select>
+        </div>
+        <label class="drop" id="drop" for="xfile"><strong>Elegí el archivo</strong> o arrastralo acá<br><span class="hint">.xlsx, .xls o .csv</span></label>
+        <input type="file" id="xfile" accept=".xlsx,.xls,.csv,.txt" class="sr">
+        <label for="xpaste" class="sr">Pegar extracto</label>
+        <textarea id="xpaste" rows="5" spellcheck="false" placeholder="…o pegá acá las filas copiadas del home banking"></textarea>
+        <div id="xmap" class="map" hidden></div>
+        <div id="xinfo"></div>
+        <div class="row"><button class="btn primary" id="xadd" disabled>Agregar movimientos</button></div>
+      </div>
+
+      <div class="panel" id="p-fijos" role="tabpanel" hidden>
+        <p class="hint">Salen de la hoja <b>Fijos</b> de tu planilla. Marcá los que querés cargar este mes.</p>
+        <div class="fsel" id="fijos"></div>
+        <div class="row"><button class="btn primary" id="fadd">Agregar fijos</button></div>
+        <p class="hint">Si importás el extracto del banco, los débitos automáticos ya vienen ahí: no los agregues dos veces.</p>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Para guardar">
+      <div class="ticket-head">
+        <div>
+          <h2>Para guardar</h2>
+          <p class="hint" id="qcount">Sin movimientos pendientes</p>
+        </div>
+        <div class="totals">
+          <div class="g">Gastos<b id="tg">$ 0</b></div>
+          <div class="i">Ingresos<b id="ti">$ 0</b></div>
+        </div>
+      </div>
+      <div class="toolbar" id="tbar" hidden><span class="hint" id="unkinfo"></span></div>
+      <div class="list" id="list"></div>
+      <div class="actionbar">
+        <button class="btn primary" id="save" disabled>Guardar en la planilla</button>
+        <span class="spacer"></span>
+        <button class="btn ghost small" id="copy" disabled>Copiar como tabla</button>
+        <button class="btn ghost small" id="clear" hidden>Vaciar</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="card mes" id="mes" hidden>
+    <div class="mes-head">
+      <h2 id="mtitle">Este mes</h2>
+      <div class="row">
+        <a class="btn ghost small" id="mopen" href="#" target="_blank" rel="noopener" hidden>Abrir planilla</a>
+        <button class="btn small" id="mref">Actualizar</button>
+      </div>
+    </div>
+    <div class="inner">
+      <div>
+        <div class="kpis">
+          <div class="kpi i"><span>Ingresos</span><b id="mi">–</b></div>
+          <div class="kpi g"><span>Gastos</span><b id="mg">–</b></div>
+          <div class="kpi"><span>Resultado</span><b id="mr">–</b></div>
+        </div>
+        <div class="bars" id="mbars"></div>
+      </div>
+      <div>
+        <p class="hint" style="margin:0 0 4px">Últimos cargados</p>
+        <div class="last" id="mlast"></div>
+      </div>
+    </div>
+  </section>
+
+  <details class="card">
+    <summary>Reglas de categorías</summary>
+    <div class="inner">
+      <p class="hint">Si la descripción contiene la palabra clave, toma esa categoría. Si coinciden varias, gana la más larga. Se guardan en la hoja <b>Reglas</b>.</p>
+      <div class="row">
+        <input id="rk" placeholder="palabra clave (ej. carrefour)" style="flex:1 1 160px" aria-label="Palabra clave">
+        <select id="rc" style="flex:1 1 160px" aria-label="Categoría"></select>
+        <button class="btn small primary" id="radd">Agregar regla</button>
+      </div>
+      <input id="rsearch" placeholder="Buscar regla…" aria-label="Buscar regla">
+      <div class="rules" id="rules"></div>
+    </div>
+  </details>
+
+  <details class="card" id="ajustes">
+    <summary>Ajustes</summary>
+    <div class="inner">
+      <div class="settings">
+        <label>Cuenta por defecto en este dispositivo<select id="sdef"></select></label>
+        <label>Formato al copiar como tabla
+          <select id="snum"><option value="ar">Argentina: 3497,68</option><option value="us">Inglés: 3497.68</option></select>
+        </label>
+      </div>
+      <div class="row">
+        <button class="btn small" id="sconn">Cambiar conexión</button>
+        <span class="hint" id="sinfo"></span>
+      </div>
+    </div>
+  </details>
+</div>
+<div id="toast" class="toast" hidden role="status"><span id="tmsg"></span><button id="tundo" hidden>Deshacer</button></div>
+<script src="reglas.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
