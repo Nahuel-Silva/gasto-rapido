@@ -330,6 +330,7 @@ function render() {
     }).join("");
   }
   $("#tg").textContent = fmtMoney(tg); $("#ti").textContent = fmtMoney(ti);
+  const nc = $("#navcount"); nc.hidden = !queue.length; nc.textContent = queue.length;
   $("#qcount").textContent = queue.length ? `${queue.length} ${queue.length === 1 ? "movimiento" : "movimientos"} sin guardar` : "Sin movimientos pendientes";
   $("#save").disabled = !queue.length; $("#copy").disabled = !queue.length; $("#clear").hidden = !queue.length;
   $("#save").textContent = queue.length ? `Guardar ${queue.length} en la planilla` : "Guardar en la planilla";
@@ -361,7 +362,7 @@ $("#list").addEventListener("click", (e) => {
 
 /* ---------- guardar ---------- */
 $("#save").onclick = async () => {
-  if (!conn) { $("#setup").hidden = false; $("#curl").focus(); toast("Conectá tu planilla para guardar"); return; }
+  if (!conn) { go("ajustes"); toast("Conectá tu planilla para guardar"); return; }
   const b = $("#save"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
   const batch = queue.slice(0, 500);
   try {
@@ -444,7 +445,7 @@ function cuotaPreview() {
 ["#ktipo", "#kcuotas", "#kmes", "#kdonde"].forEach((s) => $(s).addEventListener("change", cuotaPreview));
 $("#kadd").onclick = async () => {
   const c = cuotaPreview(); if (!c || !c.compra) return;
-  if (!conn) { $("#setup").hidden = false; toast("Conectá tu planilla para guardar compras con tarjeta"); return; }
+  if (!conn) { go("ajustes"); toast("Conectá tu planilla para guardar compras con tarjeta"); return; }
   const b = $("#kadd"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
   try {
     await api("cuota", c);
@@ -516,12 +517,24 @@ $("#cgo").onclick = async () => {
   conn = { url, clave }; lsSet(LS.conn, conn);
   $("#cmsg").textContent = "Probando la conexión…";
   await loadRemote(true);
-  if ($("#setup").hidden) toast("¡Conectado! Ya podés guardar en tu planilla");
+  if ($("#setup").hidden) { $("#cmsg").textContent = "Conectado a " + ((remote && remote.planilla) || "tu planilla") + "."; toast("¡Conectado! Ya podés guardar en tu planilla"); go("cargar"); }
   else $("#cmsg").textContent = "No pude conectar. Revisá la dirección y la clave (menú Gasto Rápido → Ver clave actual).";
 };
-$("#sconn").onclick = () => { $("#setup").hidden = false; if (conn) { $("#curl").value = conn.url; } $("#curl").focus(); };
+$("#sconn").onclick = () => go("ajustes");
 $("#sdef").onchange = (e) => { prefs.defMedio = e.target.value; lsSet(LS.prefs, prefs); quickPreview(); };
 $("#snum").onchange = (e) => { prefs.num = e.target.value; lsSet(LS.prefs, prefs); };
+
+/* ---------- secciones ---------- */
+const VIEWS = ["cargar", "mes", "tarjeta", "ajustes"];
+function showView() {
+  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "cargar";
+  VIEWS.forEach((x) => { $("#v-" + x).hidden = x !== v; });
+  document.querySelectorAll(".nav a").forEach((a) => { if (a.dataset.v === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  if (v === "ajustes") { if (conn && !$("#curl").value) $("#curl").value = conn.url; if (!conn) $("#curl").focus(); }
+  if ((v === "mes" || v === "tarjeta") && conn) loadResumen();
+}
+function go(v) { if (location.hash !== "#" + v) location.hash = v; else showView(); window.scrollTo(0, 0); }
+window.addEventListener("hashchange", () => { showView(); window.scrollTo(0, 0); });
 
 /* ---------- pestañas y eventos ---------- */
 document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => {
@@ -549,4 +562,4 @@ function toast(msg, undo) {
   t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), undo ? 6000 : 4000);
 }
 
-fillSelects(); fillMeses(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);
+showView(); fillSelects(); fillMeses(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);
