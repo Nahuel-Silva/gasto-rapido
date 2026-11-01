@@ -330,6 +330,7 @@ function render() {
     }).join("");
   }
   $("#tg").textContent = fmtMoney(tg); $("#ti").textContent = fmtMoney(ti);
+  if (remote && remote.fijos && remote.fijos.length) renderFijos();
   const nc = $("#navcount"); nc.hidden = !queue.length; nc.textContent = queue.length;
   $("#qcount").textContent = queue.length ? `${queue.length} ${queue.length === 1 ? "movimiento" : "movimientos"} sin guardar` : "Sin movimientos pendientes";
   $("#save").disabled = !queue.length; $("#copy").disabled = !queue.length; $("#clear").hidden = !queue.length;
@@ -396,6 +397,7 @@ async function loadResumen() {
     $("#mlast").innerHTML = (r.ultimos || []).map((u) => `<div><span class="d">${u.fecha ? fmtDate(u.fecha).slice(0, 5) : ""}</span><span class="s">${esc(u.desc)} <small class="hint">· ${esc(u.tipo === "Ingreso" ? "INGRESO" : u.cat || "")}</small></span><span class="m" style="color:${u.tipo === "Ingreso" ? "var(--good)" : "inherit"}">${u.tipo === "Ingreso" ? "+" : ""}${fmtMoney(u.monto)}</span></div>`).join("") || `<p class="hint">Sin movimientos.</p>`;
     renderTarjeta(r.tarjeta);
     renderSaldos(r.saldos);
+    fijosCargados = r.fijosCargados || {}; renderFijos();
     if (remote && remote.url) { const a = $("#mopen"); a.href = remote.url; a.hidden = false; }
   } catch (e) { /* el resumen es opcional */ }
 }
@@ -508,11 +510,18 @@ $("#radd").onclick = () => { addRule($("#rk").value, $("#rc").value); $("#rk").v
 $("#rsearch").oninput = renderRules;
 
 /* ---------- fijos ---------- */
+let fijosCargados = {};
 function renderFijos() {
   const fijos = (remote && remote.fijos) || [];
   const box = $("#fijos");
   if (!fijos.length) { box.innerHTML = `<p class="hint">${conn ? "No hay fijos cargados en la hoja Fijos." : "Conectá tu planilla para ver tus fijos."}</p>`; $("#fadd").disabled = true; return; }
-  box.innerHTML = fijos.map((f, i) => `<label><input type="checkbox" data-i="${i}" ${f.activo ? "checked" : ""}><span>${esc(f.concepto)} <small>· día ${f.dia} · ${esc(f.medio)}</small></span><span class="m">${fmtMoney(f.monto)}</span></label>`).join("");
+  const enLista = new Set(queue.map((q) => norm(q.desc)));
+  box.innerHTML = fijos.map((f, i) => {
+    const k = (f.concepto || "").trim().toLowerCase();
+    const ya = fijosCargados[k] ? `ya cargado el ${fmtDate(fijosCargados[k]).slice(0, 5)}` : enLista.has(norm(f.concepto)) ? "ya está en la lista" : "";
+    const marcar = f.activo && !ya;
+    return `<label class="${ya ? "done" : ""}"><input type="checkbox" data-i="${i}" ${marcar ? "checked" : ""}><span>${esc(f.concepto)} <small>· día ${f.dia} · ${esc(f.medio)}${ya ? ` · <b>${ya}</b>` : ""}</small></span><span class="m">${fmtMoney(f.monto)}</span></label>`;
+  }).join("");
   updFijosBtn();
 }
 function updFijosBtn() {

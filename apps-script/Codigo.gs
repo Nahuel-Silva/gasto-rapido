@@ -359,6 +359,7 @@ function resumen_(mes) {
 
   let ingresos = 0, gastos = 0;
   const porCat = {};
+  const descMes = {};
   const porCuenta = {};
   datos.forEach((r) => {
     const f = r[COL.fecha - 1];
@@ -370,6 +371,8 @@ function resumen_(mes) {
       porCuenta[cuenta] = (porCuenta[cuenta] || 0) + monto;
     } else {
       gastos += monto;
+      const dk = String(r[COL.desc - 1] || '').trim().toLowerCase();
+      if (dk && !descMes[dk]) descMes[dk] = Utilities.formatDate(f, Session.getScriptTimeZone(), 'yyyy-MM-dd');
       const c = String(r[COL.catFinal - 1] || r[COL.cat - 1] || 'SIN CATEGORÍA');
       porCat[c] = (porCat[c] || 0) + monto;
       porCuenta[cuenta] = (porCuenta[cuenta] || 0) - monto;
@@ -381,7 +384,18 @@ function resumen_(mes) {
     fecha: r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
     tipo: r[1], desc: r[2], monto: Number(r[3]) || 0, medio: r[4], cat: r[COL.catFinal - 1]
   }));
-  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo) };
+  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo), fijosCargados: fijosCargados_(descMes) };
+}
+
+/** Qué fijos de la hoja Fijos ya tienen un gasto con la misma descripción en el mes. */
+function fijosCargados_(descMes) {
+  const fj = SpreadsheetApp.getActive().getSheetByName('Fijos');
+  const out = {};
+  fj.getRange(5, 1, 15, 1).getValues().forEach((r) => {
+    const k = String(r[0] || '').trim().toLowerCase();
+    if (k && descMes[k]) out[k] = descMes[k];
+  });
+  return out;
 }
 
 /* ------------------------------------------------------------------ util */

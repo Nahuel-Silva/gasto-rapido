@@ -237,3 +237,5 @@ a{color:var(--accent)}
 .fixrow input,.fixrow select{width:100%}
 @media (max-width:480px){.fixrow{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){.plata span{display:none}}
+.fsel label.done{opacity:.6}
+.fsel label.done b{color:var(--good);font-weight:600}
