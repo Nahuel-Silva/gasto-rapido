@@ -552,7 +552,7 @@ $("#cgo").onclick = async () => {
   conn = { url, clave }; lsSet(LS.conn, conn);
   $("#cmsg").textContent = "Probando la conexión…";
   await loadRemote(true);
-  if ($("#setup").hidden) { $("#cmsg").textContent = "Conectado a " + ((remote && remote.planilla) || "tu planilla") + "."; toast("¡Conectado! Ya podés guardar en tu planilla"); go("cargar"); }
+  if ($("#setup").hidden) { $("#cmsg").textContent = "Conectado a " + ((remote && remote.planilla) || "tu planilla") + "."; toast("¡Conectado! Ya podés guardar en tu planilla"); go("mes"); }
   else $("#cmsg").textContent = "No pude conectar. Revisá la dirección y la clave (menú Gasto Rápido → Ver clave actual).";
 };
 $("#sconn").onclick = () => go("ajustes");
@@ -560,9 +560,9 @@ $("#sdef").onchange = (e) => { prefs.defMedio = e.target.value; lsSet(LS.prefs, 
 $("#snum").onchange = (e) => { prefs.num = e.target.value; lsSet(LS.prefs, prefs); };
 
 /* ---------- secciones ---------- */
-const VIEWS = ["cargar", "mes", "tarjeta", "ajustes"];
+const VIEWS = ["mes", "cargar", "tarjeta", "ajustes"];
 function showView() {
-  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "cargar";
+  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "mes";
   VIEWS.forEach((x) => { $("#v-" + x).hidden = x !== v; });
   document.querySelectorAll(".nav a").forEach((a) => { if (a.dataset.v === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (v === "ajustes") { if (conn && !$("#curl").value) $("#curl").value = conn.url; if (!conn) $("#curl").focus(); }
