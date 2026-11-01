@@ -84,9 +84,21 @@
         </div>
 
         <div class="panel" id="p-fijos" role="tabpanel" hidden>
-          <p class="hint">Salen de la hoja <b>Fijos</b> de tu planilla. Marcá los que vas a cargar este mes. Si importás el extracto, los débitos automáticos ya vienen ahí.</p>
+          <p class="hint">Cuando se te debite uno, marcalo y agregalo: se carga con la fecha de hoy.</p>
           <div class="fsel" id="fijos"></div>
-          <div class="row"><button class="btn primary" id="fadd">Agregar fijos</button></div>
+          <div class="row"><button class="btn primary" id="fadd" disabled>Agregar fijos</button></div>
+          <details class="help" id="fnewbox">
+            <summary>Agregar un gasto fijo nuevo</summary>
+            <div class="tform" style="margin-top:10px">
+              <label class="wide">Nombre<input id="fnconcepto" placeholder="Netflix" autocomplete="off"></label>
+              <label>Monto por mes<input id="fnmonto" inputmode="decimal" placeholder="8.999" autocomplete="off"></label>
+              <label>Día que se debita<input id="fndia" type="number" min="1" max="31" value="1"></label>
+              <label>Categoría<select id="fncat"></select></label>
+              <label>Cuenta<select id="fnmedio"></select></label>
+            </div>
+            <div class="row" style="margin-top:10px"><button class="btn small primary" id="fngo">Guardar gasto fijo</button></div>
+            <p class="hint">Se guarda en la hoja <b>Fijos</b> de tu planilla. Ahí también podés cambiar montos o desactivar los que ya no pagás (columna ¿Activo? = No).</p>
+          </details>
         </div>
       </section>
 

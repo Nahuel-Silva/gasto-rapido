@@ -514,12 +514,14 @@ let fijosCargados = {};
 function renderFijos() {
   const fijos = (remote && remote.fijos) || [];
   const box = $("#fijos");
+  const prev = new Set([...document.querySelectorAll("#fijos input:checked")].map((c) => c.dataset.i));
   if (!fijos.length) { box.innerHTML = `<p class="hint">${conn ? "No hay fijos cargados en la hoja Fijos." : "Conectá tu planilla para ver tus fijos."}</p>`; $("#fadd").disabled = true; return; }
   const enLista = new Set(queue.map((q) => norm(q.desc)));
   box.innerHTML = fijos.map((f, i) => {
     const k = (f.concepto || "").trim().toLowerCase();
     const ya = fijosCargados[k] ? `ya cargado el ${fmtDate(fijosCargados[k]).slice(0, 5)}` : enLista.has(norm(f.concepto)) ? "ya está en la lista" : "";
-    const marcar = f.activo && !ya;
+    const marcar = prev.has(String(i)) && !ya;
+    if (!f.activo) return "";
     return `<label class="${ya ? "done" : ""}"><input type="checkbox" data-i="${i}" ${marcar ? "checked" : ""}><span>${esc(f.concepto)} <small>· día ${f.dia} · ${esc(f.medio)}${ya ? ` · <b>${ya}</b>` : ""}</small></span><span class="m">${fmtMoney(f.monto)}</span></label>`;
   }).join("");
   updFijosBtn();
@@ -529,20 +531,34 @@ function updFijosBtn() {
   const sel = [...document.querySelectorAll("#fijos input:checked")].map((c) => fijos[+c.dataset.i]);
   const n = sel.reduce((a, f) => a + f.monto, 0);
   $("#fadd").disabled = !sel.length;
-  $("#fadd").textContent = sel.length ? `Agregar ${sel.length} fijos de ${MESES[today().getMonth()]} (${fmtMoney(n)})` : "Agregar fijos";
+  $("#fadd").textContent = sel.length ? `Agregar ${sel.length} ${sel.length === 1 ? "fijo" : "fijos"} (${fmtMoney(n)})` : "Agregar fijos";
 }
 $("#fijos").addEventListener("change", updFijosBtn);
+$("#fngo").onclick = async () => {
+  const concepto = $("#fnconcepto").value.trim(); const monto = Math.abs(parseAmount($("#fnmonto").value));
+  if (!concepto || !monto) { toast("Completá el nombre y el monto"); return; }
+  if (!conn) { go("ajustes"); toast("Conectá tu planilla para guardar fijos"); return; }
+  const b = $("#fngo"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
+  try {
+    const out = await api("fijo", { concepto, monto, dia: +$("#fndia").value || 1, cat: $("#fncat").value, medio: $("#fnmedio").value });
+    toast(out.actualizado ? `Actualicé ${concepto} en tus fijos` : `${concepto} agregado a tus fijos`);
+    $("#fnconcepto").value = ""; $("#fnmonto").value = ""; $("#fnewbox").open = false;
+    await loadRemote(true);
+  } catch (e) { toast(/desconocida/i.test(e.message) ? "Actualizá el script de la planilla para usar esta función" : e.message); }
+  b.disabled = false; b.textContent = "Guardar gasto fijo";
+};
 $("#fadd").onclick = () => {
   const fijos = (remote && remote.fijos) || []; const t = today();
-  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
   const sel = [...document.querySelectorAll("#fijos input:checked")].map((c) => fijos[+c.dataset.i]);
-  addItems(sel.map((f) => mk({ fecha: iso(new Date(t.getFullYear(), t.getMonth(), Math.min(f.dia, last), 12)), tipo: "Gasto", desc: f.concepto, monto: f.monto, medio: f.medio, cat: f.cat, catSrc: "manual" })), "fijos");
+  addItems(sel.map((f) => mk({ fecha: iso(t), tipo: "Gasto", desc: f.concepto, monto: f.monto, medio: f.medio, cat: f.cat, catSrc: "manual" })), "fijos");
 };
 
 /* ---------- conexión y ajustes ---------- */
 function fillSelects() {
   ["#xmedio", "#sdef"].forEach((s) => ($(s).innerHTML = selOpts(CUENTAS(), DEF_MEDIO())));
   $("#rc").innerHTML = selOpts(CATS(), CATS().includes("SALIDAS") ? "SALIDAS" : CATS()[0]);
+  $("#fncat").innerHTML = selOpts(CATS(), CATS().includes("SUSCRIPCIONES") ? "SUSCRIPCIONES" : CATS()[0]);
+  $("#fnmedio").innerHTML = selOpts(CUENTAS(), DEF_MEDIO());
   $("#snum").value = prefs.num || "ar";
 }
 $("#cgo").onclick = async () => {

@@ -95,6 +95,7 @@ function doPost(e) {
       case 'resumen': return json_(Object.assign({ ok: true }, resumen_(req.mes)));
       case 'cuota': return json_(Object.assign({ ok: true }, agregarCuota_(req)));
       case 'saldo': return json_(Object.assign({ ok: true }, ajustarSaldo_(req)));
+      case 'fijo': return json_(Object.assign({ ok: true }, agregarFijo_(req)));
       default: return json_({ ok: false, error: 'Acción desconocida: ' + req.accion });
     }
   } catch (err) {
@@ -385,6 +386,29 @@ function resumen_(mes) {
     tipo: r[1], desc: r[2], monto: Number(r[3]) || 0, medio: r[4], cat: r[COL.catFinal - 1]
   }));
   return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo), fijosCargados: fijosCargados_(descMes) };
+}
+
+/** Agrega un gasto fijo nuevo a la hoja Fijos (filas 5 a 19). */
+function agregarFijo_(req) {
+  const concepto = String(req.concepto || '').replace(/^[=+\-@]+/, '').trim().slice(0, 40);
+  const monto = Math.round(Math.abs(Number(req.monto)) * 100) / 100;
+  const dia = Math.min(31, Math.max(1, Math.round(Number(req.dia)) || 1));
+  const { categorias, cuentas, cuentaDefecto } = leerConfig_();
+  const cat = categorias.indexOf(String(req.cat)) >= 0 ? String(req.cat) : 'FIJOS';
+  const medio = cuentas.indexOf(String(req.medio)) >= 0 ? String(req.medio) : cuentaDefecto;
+  if (!concepto || !(monto > 0)) throw new Error('Gasto fijo inválido.');
+  const fj = SpreadsheetApp.getActive().getSheetByName('Fijos');
+  const a = fj.getRange(5, 1, 15, 1).getValues();
+  for (let i = 0; i < a.length; i++) {
+    if (String(a[i][0]).trim().toLowerCase() === concepto.toLowerCase()) {
+      fj.getRange(5 + i, 2, 1, 5).setValues([[cat, monto, medio, dia, 'Sí']]);
+      return { concepto, actualizado: true };
+    }
+  }
+  const libre = a.findIndex((r) => String(r[0]).trim() === '');
+  if (libre < 0) throw new Error('La hoja Fijos está llena (15 filas). Borrá alguno que ya no uses.');
+  fj.getRange(5 + libre, 1, 1, 6).setValues([[concepto, cat, monto, medio, dia, 'Sí']]);
+  return { concepto, actualizado: false };
 }
 
 /** Qué fijos de la hoja Fijos ya tienen un gasto con la misma descripción en el mes. */
