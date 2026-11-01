@@ -15,7 +15,7 @@ Vos ──► Página (GitHub Pages) ──► Apps Script (tu API) ──► Go
 
 ### 1. La planilla
 1. Subí `Finanzas.xlsx` a Google Drive y abrila con **Hojas de cálculo de Google**.
-2. Las fórmulas automáticas de la hoja Movimientos (columnas G, H e I) se completan solas para cada fila nueva.
+2. Las fórmulas automáticas de Movimientos (columnas G, H e I) las instala el script en el paso 2 (también: menú Gasto Rápido → Preparar planilla).
 
 ### 2. El script (Apps Script)
 1. En la planilla: **Extensiones → Apps Script**.

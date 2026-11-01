@@ -25,10 +25,12 @@ function onOpen() {
     .createMenu('Gasto Rápido')
     .addItem('Generar clave nueva', 'generarClave')
     .addItem('Ver clave actual', 'verClave')
+    .addItem('Preparar planilla (fórmulas)', 'prepararPlanilla')
     .addToUi();
 }
 
 function generarClave() {
+  prepararPlanilla_();
   const clave = Utilities.getUuid().replace(/-/g, '').slice(0, 24);
   PropertiesService.getScriptProperties().setProperty(PROP_CLAVE, clave);
   SpreadsheetApp.getUi().alert(
@@ -41,6 +43,31 @@ function generarClave() {
 function verClave() {
   const clave = PropertiesService.getScriptProperties().getProperty(PROP_CLAVE);
   SpreadsheetApp.getUi().alert(clave ? 'Tu clave es:\n\n' + clave : 'Todavía no generaste una clave. Usá «Generar clave nueva».');
+}
+
+/** Fórmulas automáticas de Movimientos: una sola fórmula por columna que cubre todas las filas. */
+const FORMULAS = {
+  G2: '=MAP(B2:B,C2:C,D2:D,F2:F,LAMBDA(tipo,desc,monto,cat,IF(monto="","",IF(tipo="Ingreso","INGRESO",IF(cat<>"",cat,' +
+      'IFERROR(INDEX(Reglas!$B:$B,1/(1/SUMPRODUCT(MAX(ISNUMBER(SEARCH(Reglas!$A$2:$A$400,desc))*(Reglas!$A$2:$A$400<>"")*ROW(Reglas!$A$2:$A$400))))),"SIN CATEGORÍA"))))))',
+  H2: '=ARRAYFORMULA(IF((A2:A="")+(D2:D=""),"",DATE(YEAR(A2:A),MONTH(A2:A),1)))',
+  I2: '=ARRAYFORMULA(IF(D2:D="","",IF(E2:E="",Config!$E$5,E2:E)))'
+};
+
+function prepararPlanilla_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(HOJA_MOV);
+  Object.keys(FORMULAS).forEach((a1) => {
+    const r = sh.getRange(a1);
+    if (!r.getFormula()) {
+      sh.getRange(a1 + ':' + a1.charAt(0)).clearContent(); // la fórmula necesita la columna vacía (ej. G2:G)
+      r.setFormula(FORMULAS[a1]);
+    }
+  });
+  sh.getRange('H2:H').setNumberFormat('mmm yyyy');
+}
+
+function prepararPlanilla() {
+  prepararPlanilla_();
+  SpreadsheetApp.getUi().alert('Listo: las columnas G, H e I de Movimientos se calculan solas.');
 }
 
 /* ------------------------------------------------------------------ web */
