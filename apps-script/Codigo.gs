@@ -94,6 +94,7 @@ function doPost(e) {
       case 'regla': return json_(Object.assign({ ok: true }, agregarRegla_(req.palabra, req.categoria)));
       case 'resumen': return json_(Object.assign({ ok: true }, resumen_(req.mes)));
       case 'cuota': return json_(Object.assign({ ok: true }, agregarCuota_(req)));
+      case 'saldo': return json_(Object.assign({ ok: true }, ajustarSaldo_(req)));
       default: return json_({ ok: false, error: 'Acción desconocida: ' + req.accion });
     }
   } catch (err) {
@@ -269,6 +270,80 @@ function tarjeta_(y, mo) {
   return { esteMes: round2_(esteMes), proximo: round2_(proximo), deuda: round2_(deuda), porDonde, compras };
 }
 
+/* ------------------------------------------------------------------ saldos */
+
+// Hoja Saldos: fila 4 = nombre de cada cuenta (B, D, F…), filas desde la 6 = un mes por fila.
+// Por cuenta: columna «Inicio real (opcional)» y al lado «Saldo final» (fórmula).
+const SALDOS = { hoja: 'Saldos', filaCuentas: 4, filaDatos: 6 };
+
+function mapaSaldos_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(SALDOS.hoja);
+  const ncol = sh.getLastColumn();
+  const cab = sh.getRange(SALDOS.filaCuentas, 1, 1, ncol).getValues()[0];
+  const cuentas = [];
+  for (let c = 2; c <= ncol; c += 2) {
+    const nombre = String(cab[c - 1] || '').trim();
+    if (nombre && nombre.toUpperCase() !== 'TOTAL') cuentas.push({ nombre, colReal: c, colFinal: c + 1 });
+  }
+  const n = sh.getLastRow() - SALDOS.filaDatos + 1;
+  const meses = sh.getRange(SALDOS.filaDatos, 1, Math.max(n, 1), 1).getValues().map((r) => r[0]);
+  return { sh, cuentas, meses };
+}
+
+function filaMes_(meses, y, mo) {
+  for (let i = 0; i < meses.length; i++) {
+    const d = meses[i];
+    if (d instanceof Date && d.getFullYear() === y && d.getMonth() === mo) return SALDOS.filaDatos + i;
+  }
+  return -1;
+}
+
+/** Saldo de cada cuenta al día de hoy (saldo final del mes en curso, con lo cargado hasta ahora). */
+function saldos_(y, mo) {
+  const { sh, cuentas, meses } = mapaSaldos_();
+  const fila = filaMes_(meses, y, mo);
+  if (fila < 0) return { cuentas: [], total: 0, aviso: 'La hoja Saldos no tiene una fila para este mes.' };
+  const fil = sh.getRange(fila, 1, 1, sh.getLastColumn()).getValues()[0];
+  const lista = cuentas.map((c) => ({
+    cuenta: c.nombre,
+    saldo: round2_(Number(fil[c.colFinal - 1]) || 0),
+    ajustado: fil[c.colReal - 1] !== '' && fil[c.colReal - 1] !== null
+  }));
+  return { cuentas: lista, total: round2_(lista.reduce((a, c) => a + c.saldo, 0)) };
+}
+
+/** Corrige el saldo de una cuenta con lo que dice el banco hoy. */
+function ajustarSaldo_(req) {
+  const cuenta = String(req.cuenta || '').trim();
+  const real = Number(req.monto);
+  if (!cuenta || !isFinite(real)) throw new Error('Saldo inválido.');
+  const hoy = new Date();
+  const y = hoy.getFullYear(), mo = hoy.getMonth();
+  const { sh, cuentas, meses } = mapaSaldos_();
+  const c = cuentas.find((x) => x.nombre === cuenta);
+  if (!c) throw new Error('La cuenta «' + cuenta + '» no está en la hoja Saldos.');
+  const fila = filaMes_(meses, y, mo);
+  if (fila < 0) throw new Error('La hoja Saldos no tiene una fila para este mes.');
+
+  // Movimiento neto de la cuenta en el mes, para que el saldo final quede igual a lo que dice el banco.
+  const mov = SpreadsheetApp.getActive().getSheetByName(HOJA_MOV);
+  const ult = primeraFilaLibre_(mov) - 1;
+  let neto = 0;
+  if (ult >= 2) {
+    mov.getRange(2, 1, ult - 1, COL.cuenta).getValues().forEach((r) => {
+      const f = r[COL.fecha - 1];
+      if (!(f instanceof Date) || f.getFullYear() !== y || f.getMonth() !== mo) return;
+      if (String(r[COL.cuenta - 1] || r[COL.medio - 1]) !== cuenta) return;
+      const m = Number(r[COL.monto - 1]) || 0;
+      neto += r[COL.tipo - 1] === 'Ingreso' ? m : -m;
+    });
+  }
+  const inicio = round2_(real - neto);
+  sh.getRange(fila, c.colReal).setValue(inicio);
+  SpreadsheetApp.flush();
+  return { cuenta, saldo: round2_(real), inicioDelMes: inicio };
+}
+
 /* ------------------------------------------------------------------ resumen */
 
 function resumen_(mes) {
@@ -279,7 +354,7 @@ function resumen_(mes) {
 
   const sh = SpreadsheetApp.getActive().getSheetByName(HOJA_MOV);
   const ult = primeraFilaLibre_(sh) - 1;
-  if (ult < 2) return { mes: fmtMes_(y, mo), ingresos: 0, gastos: 0, categorias: [], ultimos: [], tarjeta: tarjeta_(y, mo) };
+  if (ult < 2) return { mes: fmtMes_(y, mo), ingresos: 0, gastos: 0, categorias: [], ultimos: [], tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo) };
   const datos = sh.getRange(2, 1, ult - 1, COL.origen).getValues();
 
   let ingresos = 0, gastos = 0;
@@ -306,7 +381,7 @@ function resumen_(mes) {
     fecha: r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
     tipo: r[1], desc: r[2], monto: Number(r[3]) || 0, medio: r[4], cat: r[COL.catFinal - 1]
   }));
-  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo) };
+  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo) };
 }
 
 /* ------------------------------------------------------------------ util */

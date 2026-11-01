@@ -44,6 +44,7 @@ En el celu: menú del navegador → **Agregar a pantalla de inicio**. Queda como
 ## Uso
 - **Escribir:** `cabi 3500`, `ayer kfc 18880`, `vea 143.860 santander`, `+ingreso 155000 icbc`, `pan 1500 #salidas`.
 - **Extracto del banco:** subí el Excel/CSV del home banking o pegá la tabla.
+- **Tu plata:** en la sección Mes ves el saldo de cada cuenta. Si no coincide con el banco, lo corregís ahí.
 - **Fijos del mes:** salen de la hoja Fijos; marcás cuáles y se agregan con la fecha de este mes.
 - Revisás la lista y tocás **Guardar en la planilla**. Si no hay internet, queda pendiente en el dispositivo.
 

@@ -23,7 +23,10 @@
     <div class="brand">
       <h1>Gasto <span>Rápido</span></h1>
     </div>
-    <span id="sync" class="pill"><i></i><span>Sin conectar</span></span>
+    <div class="top-right">
+      <a class="plata" id="plata" href="#mes" hidden><span>Tenés</span><b id="plataTotal">–</b></a>
+      <span id="sync" class="pill"><i></i><span>Sin conectar</span></span>
+    </div>
   </header>
 
   <nav class="nav" aria-label="Secciones">
@@ -111,6 +114,27 @@
 
   <!-- ============ MES ============ -->
   <main class="view" id="v-mes" hidden>
+    <section class="card" id="saldos" hidden>
+      <div class="card-head saldos-head">
+        <div>
+          <h2>Tu plata hoy</h2>
+          <p class="hint">Saldo de cada cuenta con todo lo cargado hasta ahora.</p>
+        </div>
+        <b class="big" id="stotal">–</b>
+      </div>
+      <div class="panel">
+        <div class="accts" id="slist"></div>
+        <details class="help" id="sfix">
+          <summary>¿No coincide con el banco? Corregí un saldo</summary>
+          <div class="fixrow">
+            <label class="field">Cuenta<select id="scuenta"></select></label>
+            <label class="field">Saldo real hoy<input id="smonto" inputmode="decimal" placeholder="38.150" autocomplete="off"></label>
+            <button class="btn small primary" id="sgo">Guardar saldo</button>
+          </div>
+          <p class="hint">Poné lo que te muestra el banco ahora. La planilla ajusta el inicio del mes para que el saldo dé exacto, sin tocar tus movimientos.</p>
+        </details>
+      </div>
+    </section>
     <section class="card mes" id="mes" hidden>
       <div class="mes-head">
         <h2 id="mtitle">Este mes</h2>

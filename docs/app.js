@@ -7,7 +7,7 @@ const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,
 const pad = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = () => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; };
-const fmtMoney = (n) => (n < 0 ? "-$ " : "$ ") + Math.abs(Math.round(n * 100) / 100).toLocaleString("es-AR", { maximumFractionDigits: 2 });
+const fmtMoney = (n) => { const v = Math.abs(Math.round(n * 100) / 100); const dec = v % 1 ? 2 : 0; return (n < 0 ? "-$ " : "$ ") + v.toLocaleString("es-AR", { minimumFractionDigits: dec, maximumFractionDigits: dec }); };
 const fmtDate = (s) => { const [y, m, d] = s.split("-"); return `${d}/${m}/${y}`; };
 const uid = () => "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -395,10 +395,36 @@ async function loadResumen() {
     $("#mbars").innerHTML = top.length ? top.map((c) => `<div class="bar"><span class="n">${esc(c.cat)}</span><span class="t"><i style="width:${(c.monto / max) * 100}%"></i></span><span class="v">${fmtMoney(c.monto)}</span></div>`).join("") : `<p class="hint">Todavía no hay gastos este mes.</p>`;
     $("#mlast").innerHTML = (r.ultimos || []).map((u) => `<div><span class="d">${u.fecha ? fmtDate(u.fecha).slice(0, 5) : ""}</span><span class="s">${esc(u.desc)} <small class="hint">· ${esc(u.tipo === "Ingreso" ? "INGRESO" : u.cat || "")}</small></span><span class="m" style="color:${u.tipo === "Ingreso" ? "var(--good)" : "inherit"}">${u.tipo === "Ingreso" ? "+" : ""}${fmtMoney(u.monto)}</span></div>`).join("") || `<p class="hint">Sin movimientos.</p>`;
     renderTarjeta(r.tarjeta);
+    renderSaldos(r.saldos);
     if (remote && remote.url) { const a = $("#mopen"); a.href = remote.url; a.hidden = false; }
   } catch (e) { /* el resumen es opcional */ }
 }
 $("#mref").onclick = () => loadRemote(false);
+
+/* ---------- saldos ---------- */
+function renderSaldos(sd) {
+  const box = $("#saldos");
+  if (!sd || !sd.cuentas) { box.hidden = true; $("#plata").hidden = true; return; }
+  box.hidden = false;
+  $("#stotal").textContent = fmtMoney(sd.total);
+  $("#plataTotal").textContent = fmtMoney(sd.total); $("#plata").hidden = false;
+  const visibles = sd.cuentas.filter((c) => Math.abs(c.saldo) >= 0.01 || c.ajustado);
+  $("#slist").innerHTML = (visibles.length ? visibles : sd.cuentas).map((c) =>
+    `<div class="acct ${c.saldo < 0 ? "neg" : ""}"><span>${esc(c.cuenta)}</span><b>${fmtMoney(c.saldo)}</b>${c.ajustado ? `<small>corregido este mes</small>` : ""}</div>`).join("");
+  const sel = $("#scuenta"); const cur = sel.value;
+  sel.innerHTML = selOpts(sd.cuentas.map((c) => c.cuenta), cur || (visibles[0] && visibles[0].cuenta));
+}
+$("#sgo").onclick = async () => {
+  const cuenta = $("#scuenta").value; const v = parseAmount($("#smonto").value);
+  if (!cuenta || isNaN(v)) { toast("Escribí el saldo que te muestra el banco"); return; }
+  const b = $("#sgo"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
+  try {
+    await api("saldo", { cuenta, monto: v });
+    $("#smonto").value = ""; $("#sfix").open = false;
+    toast(`Listo: ${cuenta} queda en ${fmtMoney(v)}`); await loadResumen();
+  } catch (e) { toast(/desconocida/i.test(e.message) ? "Actualizá el script de la planilla para usar esta función (ver README)" : e.message); }
+  b.disabled = false; b.textContent = "Guardar saldo";
+};
 
 /* ---------- tarjeta ---------- */
 let lastTarjeta = null;
