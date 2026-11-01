@@ -239,3 +239,14 @@ a{color:var(--accent)}
 @media (max-width:640px){.plata span{display:none}}
 .fsel label.done{opacity:.6}
 .fsel label.done b{color:var(--good);font-weight:600}
+
+.fsel .frow{display:grid;grid-template-columns:minmax(0,1fr) 8.5rem;gap:8px;align-items:center;padding:6px 6px 6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--sunk)}
+.fsel .frow.var{border-style:dashed}
+.fsel .frow.done{opacity:.6}
+.fsel .frow.done b{color:var(--good);font-weight:600}
+.fchk{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;align-items:center;cursor:pointer;font-size:14px}
+.fchk small{display:block;color:var(--muted);font-size:12px}
+.fmonto{width:100%;text-align:right;font-family:var(--f-mono);padding:7px 9px;background:var(--surface)}
+.chkline{flex-direction:row!important;align-items:center;gap:8px!important;font-size:13px!important;color:var(--ink)!important;font-weight:500!important}
+.chkline input{width:auto!important}
+.fsel .frow .fchk{display:grid;grid-template-columns:22px minmax(0,1fr);gap:8px;padding:0;border:0;background:transparent;border-radius:0}

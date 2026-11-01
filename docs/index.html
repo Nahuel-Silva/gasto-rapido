@@ -84,7 +84,7 @@
         </div>
 
         <div class="panel" id="p-fijos" role="tabpanel" hidden>
-          <p class="hint">Cuando se te debite uno, marcalo y agregalo: se carga con la fecha de hoy.</p>
+          <p class="hint">Cuando pagues o se debite uno, marcalo y agregalo: se carga con la fecha de hoy. En los de monto variable escribí lo que vino en la factura.</p>
           <div class="fsel" id="fijos"></div>
           <div class="row"><button class="btn primary" id="fadd" disabled>Agregar fijos</button></div>
           <details class="help" id="fnewbox">
@@ -92,6 +92,7 @@
             <div class="tform" style="margin-top:10px">
               <label class="wide">Nombre<input id="fnconcepto" placeholder="Netflix" autocomplete="off"></label>
               <label>Monto por mes<input id="fnmonto" inputmode="decimal" placeholder="8.999" autocomplete="off"></label>
+              <label class="chkline wide"><input type="checkbox" id="fnvar"> El monto cambia cada mes (luz, agua, internet…)</label>
               <label>Día que se debita<input id="fndia" type="number" min="1" max="31" value="1"></label>
               <label>Categoría<select id="fncat"></select></label>
               <label>Cuenta<select id="fnmedio"></select></label>

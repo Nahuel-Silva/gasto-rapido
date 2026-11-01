@@ -397,7 +397,7 @@ async function loadResumen() {
     $("#mlast").innerHTML = (r.ultimos || []).map((u) => `<div><span class="d">${u.fecha ? fmtDate(u.fecha).slice(0, 5) : ""}</span><span class="s">${esc(u.desc)} <small class="hint">· ${esc(u.tipo === "Ingreso" ? "INGRESO" : u.cat || "")}</small></span><span class="m" style="color:${u.tipo === "Ingreso" ? "var(--good)" : "inherit"}">${u.tipo === "Ingreso" ? "+" : ""}${fmtMoney(u.monto)}</span></div>`).join("") || `<p class="hint">Sin movimientos.</p>`;
     renderTarjeta(r.tarjeta);
     renderSaldos(r.saldos);
-    fijosCargados = r.fijosCargados || {}; renderFijos();
+    fijosCargados = r.fijosCargados || {}; fijosUltimo = r.fijosUltimo || {}; renderFijos();
     if (remote && remote.url) { const a = $("#mopen"); a.href = remote.url; a.hidden = false; }
   } catch (e) { /* el resumen es opcional */ }
 }
@@ -510,47 +510,70 @@ $("#radd").onclick = () => { addRule($("#rk").value, $("#rc").value); $("#rk").v
 $("#rsearch").oninput = renderRules;
 
 /* ---------- fijos ---------- */
-let fijosCargados = {};
+let fijosCargados = {}, fijosUltimo = {};
+function fijoRows() { return [...document.querySelectorAll("#fijos .frow")]; }
 function renderFijos() {
   const fijos = (remote && remote.fijos) || [];
   const box = $("#fijos");
-  const prev = new Set([...document.querySelectorAll("#fijos input:checked")].map((c) => c.dataset.i));
-  if (!fijos.length) { box.innerHTML = `<p class="hint">${conn ? "No hay fijos cargados en la hoja Fijos." : "Conectá tu planilla para ver tus fijos."}</p>`; $("#fadd").disabled = true; return; }
+  const prevChk = new Set(), prevAmt = {};
+  fijoRows().forEach((r) => { const i = r.dataset.i; if (r.querySelector("input[type=checkbox]").checked) prevChk.add(i); prevAmt[i] = r.querySelector(".fmonto").value; });
+  const activos = fijos.filter((f) => f.activo);
+  if (!activos.length) { box.innerHTML = `<p class="hint">${conn ? "No hay gastos fijos activos en la hoja Fijos. Agregá uno abajo." : "Conectá tu planilla para ver tus fijos."}</p>`; updFijosBtn(); return; }
   const enLista = new Set(queue.map((q) => norm(q.desc)));
   box.innerHTML = fijos.map((f, i) => {
+    if (!f.activo) return "";
     const k = (f.concepto || "").trim().toLowerCase();
     const ya = fijosCargados[k] ? `ya cargado el ${fmtDate(fijosCargados[k]).slice(0, 5)}` : enLista.has(norm(f.concepto)) ? "ya está en la lista" : "";
-    const marcar = prev.has(String(i)) && !ya;
-    if (!f.activo) return "";
-    return `<label class="${ya ? "done" : ""}"><input type="checkbox" data-i="${i}" ${marcar ? "checked" : ""}><span>${esc(f.concepto)} <small>· día ${f.dia} · ${esc(f.medio)}${ya ? ` · <b>${ya}</b>` : ""}</small></span><span class="m">${fmtMoney(f.monto)}</span></label>`;
+    const ult = fijosUltimo[k];
+    const meta = [f.dia ? `día ${f.dia}` : "", esc(f.medio), f.variable ? (ult ? `la última vez ${fmtMoney(ult.monto)}` : "monto variable") : ""].filter(Boolean).join(" · ");
+    const val = prevAmt[i] !== undefined ? prevAmt[i] : f.variable ? "" : f.monto.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+    return `<div class="frow ${ya ? "done" : ""} ${f.variable ? "var" : ""}" data-i="${i}">
+      <label class="fchk"><input type="checkbox" ${prevChk.has(String(i)) && !ya ? "checked" : ""} aria-label="Cargar ${esc(f.concepto)}"><span>${esc(f.concepto)}<small>${meta}${ya ? ` · <b>${ya}</b>` : ""}</small></span></label>
+      <input class="fmonto amt" inputmode="decimal" value="${esc(val)}" placeholder="${f.variable ? "monto" : ""}" aria-label="Monto de ${esc(f.concepto)}">
+    </div>`;
   }).join("");
   updFijosBtn();
 }
-function updFijosBtn() {
+function fijosSeleccionados() {
   const fijos = (remote && remote.fijos) || [];
-  const sel = [...document.querySelectorAll("#fijos input:checked")].map((c) => fijos[+c.dataset.i]);
-  const n = sel.reduce((a, f) => a + f.monto, 0);
+  return fijoRows().filter((r) => r.querySelector("input[type=checkbox]").checked)
+    .map((r) => ({ f: fijos[+r.dataset.i], monto: Math.abs(parseAmount(r.querySelector(".fmonto").value)) }));
+}
+function updFijosBtn() {
+  const sel = fijosSeleccionados();
+  const n = sel.reduce((a, s) => a + (s.monto || 0), 0);
   $("#fadd").disabled = !sel.length;
   $("#fadd").textContent = sel.length ? `Agregar ${sel.length} ${sel.length === 1 ? "fijo" : "fijos"} (${fmtMoney(n)})` : "Agregar fijos";
 }
 $("#fijos").addEventListener("change", updFijosBtn);
+$("#fijos").addEventListener("input", (e) => {
+  if (!e.target.classList.contains("fmonto")) return;
+  const chk = e.target.closest(".frow").querySelector("input[type=checkbox]");
+  if (e.target.value.trim() && !chk.checked && !e.target.closest(".frow").classList.contains("done")) chk.checked = true;
+  updFijosBtn();
+});
+$("#fnvar").addEventListener("change", (e) => { $("#fnmonto").disabled = e.target.checked; if (e.target.checked) { $("#fnmonto").value = ""; if (CATS().includes("FIJOS")) $("#fncat").value = "FIJOS"; } });
 $("#fngo").onclick = async () => {
-  const concepto = $("#fnconcepto").value.trim(); const monto = Math.abs(parseAmount($("#fnmonto").value));
-  if (!concepto || !monto) { toast("Completá el nombre y el monto"); return; }
+  const concepto = $("#fnconcepto").value.trim(); const variable = $("#fnvar").checked;
+  const monto = Math.abs(parseAmount($("#fnmonto").value));
+  if (!concepto || (!variable && !monto)) { toast(variable ? "Completá el nombre" : "Completá el nombre y el monto, o marcá que cambia cada mes"); return; }
   if (!conn) { go("ajustes"); toast("Conectá tu planilla para guardar fijos"); return; }
   const b = $("#fngo"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Guardando…`;
   try {
-    const out = await api("fijo", { concepto, monto, dia: +$("#fndia").value || 1, cat: $("#fncat").value, medio: $("#fnmedio").value });
+    const out = await api("fijo", { concepto, monto: variable ? 0 : monto, variable, dia: +$("#fndia").value || 0, cat: $("#fncat").value, medio: $("#fnmedio").value });
     toast(out.actualizado ? `Actualicé ${concepto} en tus fijos` : `${concepto} agregado a tus fijos`);
-    $("#fnconcepto").value = ""; $("#fnmonto").value = ""; $("#fnewbox").open = false;
+    $("#fnconcepto").value = ""; $("#fnmonto").value = ""; $("#fnvar").checked = false; $("#fnmonto").disabled = false; $("#fnewbox").open = false;
     await loadRemote(true);
   } catch (e) { toast(/desconocida/i.test(e.message) ? "Actualizá el script de la planilla para usar esta función" : e.message); }
   b.disabled = false; b.textContent = "Guardar gasto fijo";
 };
 $("#fadd").onclick = () => {
-  const fijos = (remote && remote.fijos) || []; const t = today();
-  const sel = [...document.querySelectorAll("#fijos input:checked")].map((c) => fijos[+c.dataset.i]);
-  addItems(sel.map((f) => mk({ fecha: iso(t), tipo: "Gasto", desc: f.concepto, monto: f.monto, medio: f.medio, cat: f.cat, catSrc: "manual" })), "fijos");
+  const sel = fijosSeleccionados(); const t = today();
+  const falta = sel.filter((s) => !s.monto);
+  if (falta.length) { toast(`Escribí el monto de ${falta.map((s) => s.f.concepto).join(", ")}`); const r0 = fijoRows().find((r) => r.querySelector("input[type=checkbox]").checked && !(Math.abs(parseAmount(r.querySelector(".fmonto").value)) > 0)); if (r0) r0.querySelector(".fmonto").focus(); return; }
+  addItems(sel.map((s) => mk({ fecha: iso(t), tipo: "Gasto", desc: s.f.concepto, monto: s.monto, medio: s.f.medio, cat: s.f.cat, catSrc: "manual" })), "fijos");
+  fijoRows().forEach((r) => { r.querySelector("input[type=checkbox]").checked = false; });
+  renderFijos();
 };
 
 /* ---------- conexión y ajustes ---------- */

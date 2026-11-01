@@ -125,15 +125,17 @@ function leerConfig_() {
     .map((r) => [String(r[0]).trim(), String(r[1]).trim()]) : [];
 
   const fj = ss.getSheetByName('Fijos');
+  // Monto vacío = servicio de monto variable (luz, agua, internet…): se escribe cada mes.
   const fijos = fj.getRange(5, 1, 15, 6).getValues()
-    .filter((r) => String(r[0]).trim() && Number(r[2]) > 0)
+    .filter((r) => String(r[0]).trim())
     .map((r) => ({
       concepto: String(r[0]).trim(),
       cat: String(r[1] || 'FIJOS').trim(),
-      monto: Number(r[2]),
+      monto: Number(r[2]) > 0 ? Number(r[2]) : 0,
+      variable: !(Number(r[2]) > 0),
       medio: String(r[3] || cuentaDefecto).trim(),
-      dia: Math.min(31, Math.max(1, Number(r[4]) || 1)),
-      activo: /^s/i.test(String(r[5]))
+      dia: Number(r[4]) > 0 ? Math.min(31, Math.round(Number(r[4]))) : 0,
+      activo: String(r[5]).trim() === '' ? true : /^s/i.test(String(r[5]))
     }));
 
   return { categorias, cuentas, cuentaDefecto, reglas, fijos, planilla: ss.getName(), url: ss.getUrl() };
@@ -361,9 +363,14 @@ function resumen_(mes) {
   let ingresos = 0, gastos = 0;
   const porCat = {};
   const descMes = {};
+  const ultimoPorDesc = {};
   const porCuenta = {};
   datos.forEach((r) => {
     const f = r[COL.fecha - 1];
+    if (f instanceof Date && r[COL.tipo - 1] !== 'Ingreso') {
+      const k = String(r[COL.desc - 1] || '').trim().toLowerCase();
+      if (k) ultimoPorDesc[k] = { monto: Number(r[COL.monto - 1]) || 0, fecha: Utilities.formatDate(f, Session.getScriptTimeZone(), 'yyyy-MM-dd') };
+    }
     if (!(f instanceof Date) || f.getFullYear() !== y || f.getMonth() !== mo) return;
     const monto = Number(r[COL.monto - 1]) || 0;
     const cuenta = String(r[COL.cuenta - 1] || r[COL.medio - 1] || '');
@@ -385,18 +392,19 @@ function resumen_(mes) {
     fecha: r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
     tipo: r[1], desc: r[2], monto: Number(r[3]) || 0, medio: r[4], cat: r[COL.catFinal - 1]
   }));
-  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo), fijosCargados: fijosCargados_(descMes) };
+  return { mes: fmtMes_(y, mo), ingresos: round2_(ingresos), gastos: round2_(gastos), categorias, porCuenta, ultimos, tarjeta: tarjeta_(y, mo), saldos: saldos_(y, mo), fijosCargados: fijosCargados_(descMes), fijosUltimo: fijosUltimo_(ultimoPorDesc) };
 }
 
 /** Agrega un gasto fijo nuevo a la hoja Fijos (filas 5 a 19). */
 function agregarFijo_(req) {
   const concepto = String(req.concepto || '').replace(/^[=+\-@]+/, '').trim().slice(0, 40);
-  const monto = Math.round(Math.abs(Number(req.monto)) * 100) / 100;
-  const dia = Math.min(31, Math.max(1, Math.round(Number(req.dia)) || 1));
+  const variable = !!req.variable;
+  const monto = variable ? '' : Math.round(Math.abs(Number(req.monto)) * 100) / 100;
+  const dia = Number(req.dia) > 0 ? Math.min(31, Math.round(Number(req.dia))) : '';
   const { categorias, cuentas, cuentaDefecto } = leerConfig_();
   const cat = categorias.indexOf(String(req.cat)) >= 0 ? String(req.cat) : 'FIJOS';
   const medio = cuentas.indexOf(String(req.medio)) >= 0 ? String(req.medio) : cuentaDefecto;
-  if (!concepto || !(monto > 0)) throw new Error('Gasto fijo inválido.');
+  if (!concepto || (!variable && !(monto > 0))) throw new Error('Gasto fijo inválido.');
   const fj = SpreadsheetApp.getActive().getSheetByName('Fijos');
   const a = fj.getRange(5, 1, 15, 1).getValues();
   for (let i = 0; i < a.length; i++) {
@@ -409,6 +417,17 @@ function agregarFijo_(req) {
   if (libre < 0) throw new Error('La hoja Fijos está llena (15 filas). Borrá alguno que ya no uses.');
   fj.getRange(5 + libre, 1, 1, 6).setValues([[concepto, cat, monto, medio, dia, 'Sí']]);
   return { concepto, actualizado: false };
+}
+
+/** Último monto pagado de cada fijo (para mostrar de referencia en los de monto variable). */
+function fijosUltimo_(ultimoPorDesc) {
+  const fj = SpreadsheetApp.getActive().getSheetByName('Fijos');
+  const out = {};
+  fj.getRange(5, 1, 15, 1).getValues().forEach((r) => {
+    const k = String(r[0] || '').trim().toLowerCase();
+    if (k && ultimoPorDesc[k]) out[k] = ultimoPorDesc[k];
+  });
+  return out;
 }
 
 /** Qué fijos de la hoja Fijos ya tienen un gasto con la misma descripción en el mes. */
