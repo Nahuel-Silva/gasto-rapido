@@ -52,6 +52,7 @@
           <button class="tab" role="tab" id="t-escribir" aria-selected="true" data-p="p-escribir">Escribir</button>
           <button class="tab" role="tab" id="t-extracto" aria-selected="false" data-p="p-extracto">Extracto</button>
           <button class="tab" role="tab" id="t-fijos" aria-selected="false" data-p="p-fijos">Fijos</button>
+          <button class="tab" role="tab" id="t-transferir" aria-selected="false" data-p="p-transferir">Transferir</button>
         </div>
 
         <div class="panel" id="p-escribir" role="tabpanel">
@@ -101,9 +102,22 @@
             <p class="hint">Se guarda en la hoja <b>Fijos</b> de tu planilla. Ahí también podés cambiar montos o desactivar los que ya no pagás (columna ¿Activo? = No).</p>
           </details>
         </div>
+
+        <div class="panel" id="p-transferir" role="tabpanel" hidden>
+          <p class="hint">Plata que pasás de una cuenta tuya a otra (por ejemplo, a Naranja para que genere intereses hasta que vence la cuota). Cambia los saldos de las dos cuentas, pero no cuenta como gasto ni como ingreso.</p>
+          <div class="tform">
+            <label>Desde<select id="trdesde"></select></label>
+            <label>Hacia<select id="trhacia"></select></label>
+            <label>Monto que transferís<input id="trmonto" inputmode="decimal" placeholder="20.482" autocomplete="off"></label>
+            <label>Fecha<input id="trfecha" type="date"></label>
+            <label class="wide">Intereses ganados (opcional)<input id="trint" inputmode="decimal" placeholder="Lo que ganaste encima (si devolvés más)" autocomplete="off"></label>
+          </div>
+          <div id="trprev" class="notice" hidden></div>
+          <div class="row"><button class="btn primary" id="tradd" disabled>Agregar transferencia</button></div>
+        </div>
       </section>
 
-      <section class="card" aria-label="Para guardar">
+      <section class="card" aria-label="Para guardar" id="queuecard">
         <div class="ticket-head">
           <div>
             <h2>Para guardar</h2>
@@ -187,7 +201,17 @@
               <div class="kpi"><span>Mes que viene</span><b id="tv2">–</b></div>
               <div class="kpi"><span>Deuda en cuotas</span><b id="tv3">–</b></div>
             </div>
-            <button class="btn" id="tpay">Cargar pago del resumen</button>
+            <div class="row trow">
+              <button class="btn" id="tpay">Cargar pago del resumen</button>
+            </div>
+            <div class="apartar" id="apartar" hidden>
+              <h3 class="sub">Plata apartada para la tarjeta</h3>
+              <p class="hint" id="apinfo"></p>
+              <div class="row">
+                <button class="btn small" id="apin">Apartar en Naranja</button>
+                <button class="btn small" id="apout">Devolver para pagar</button>
+              </div>
+            </div>
             <h3 class="sub">Cuotas activas</h3>
             <div class="last tlist" id="tlist"></div>
           </div>

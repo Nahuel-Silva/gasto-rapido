@@ -17,6 +17,7 @@
 const HOJA_MOV = 'Movimientos';
 const COL = { fecha: 1, tipo: 2, desc: 3, monto: 4, medio: 5, cat: 6, catFinal: 7, mes: 8, cuenta: 9, id: 10, origen: 11 };
 const PROP_CLAVE = 'GASTO_RAPIDO_CLAVE';
+const TRANSF = 'TRANSFERENCIAS'; // movimientos entre tus cuentas: cambian saldos, no son ingreso ni gasto
 
 /* ------------------------------------------------------------------ menú */
 
@@ -47,7 +48,7 @@ function verClave() {
 
 /** Fórmulas automáticas de Movimientos: una sola fórmula por columna que cubre todas las filas. */
 const FORMULAS = {
-  G2: '=MAP(B2:B,C2:C,D2:D,F2:F,LAMBDA(tipo,desc,monto,cat,IF(monto="","",IF(tipo="Ingreso","INGRESO",IF(cat<>"",cat,' +
+  G2: '=MAP(B2:B,C2:C,D2:D,F2:F,LAMBDA(tipo,desc,monto,cat,IF(monto="","",IF(tipo="Ingreso",IF(cat<>"",cat,"INGRESO"),IF(cat<>"",cat,' +
       'IFERROR(INDEX(Reglas!$B:$B,1/(1/SUMPRODUCT(MAX(ISNUMBER(SEARCH(Reglas!$A$2:$A$400,desc))*(Reglas!$A$2:$A$400<>"")*ROW(Reglas!$A$2:$A$400))))),"SIN CATEGORÍA"))))))',
   H2: '=ARRAYFORMULA(IF((A2:A="")+(D2:D=""),"",DATE(YEAR(A2:A),MONTH(A2:A),1)))',
   I2: '=ARRAYFORMULA(IF(D2:D="","",IF(E2:E="",Config!$E$5,E2:E)))'
@@ -178,7 +179,8 @@ function agregar_(items) {
       if (!fecha || !isFinite(monto) || monto <= 0) throw new Error('Movimiento inválido: ' + JSON.stringify(it).slice(0, 120));
       const tipo = it.tipo === 'Ingreso' ? 'Ingreso' : 'Gasto';
       const medio = cuentas.indexOf(String(it.medio)) >= 0 ? String(it.medio) : '';
-      const cat = tipo === 'Gasto' && categorias.indexOf(String(it.cat)) >= 0 ? String(it.cat) : '';
+      // Los ingresos solo llevan categoría si es TRANSFERENCIAS (plata que viene de otra cuenta tuya).
+      const cat = categorias.indexOf(String(it.cat)) >= 0 && (tipo === 'Gasto' || String(it.cat) === TRANSF) ? String(it.cat) : '';
       const desc = String(it.desc || '').replace(/^[=+\-@]+/, '').slice(0, 120);
       existentes.add(id);
       nuevos.push({ fila: [fecha, tipo, desc, Math.round(monto * 100) / 100, medio, cat], extra: [id, String(it.origen || 'página').slice(0, 20)], id });
@@ -374,7 +376,10 @@ function resumen_(mes) {
     if (!(f instanceof Date) || f.getFullYear() !== y || f.getMonth() !== mo) return;
     const monto = Number(r[COL.monto - 1]) || 0;
     const cuenta = String(r[COL.cuenta - 1] || r[COL.medio - 1] || '');
-    if (r[COL.tipo - 1] === 'Ingreso') {
+    const esTransf = String(r[COL.catFinal - 1] || r[COL.cat - 1]) === TRANSF;
+    if (esTransf) {
+      porCuenta[cuenta] = (porCuenta[cuenta] || 0) + (r[COL.tipo - 1] === 'Ingreso' ? monto : -monto);
+    } else if (r[COL.tipo - 1] === 'Ingreso') {
       ingresos += monto;
       porCuenta[cuenta] = (porCuenta[cuenta] || 0) + monto;
     } else {

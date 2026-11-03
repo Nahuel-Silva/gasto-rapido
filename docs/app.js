@@ -118,7 +118,7 @@ async function loadRemote(quiet) {
     lsSet(LS.cache, remote); RULES = null;
     setPill("ok", "Conectado a " + (cfg.planilla || "tu planilla"));
     $("#setup").hidden = true;
-    fillSelects(); render(); renderFijos(); renderRules();
+    fillSelects(); fillTransfer(); render(); renderFijos(); renderRules();
     loadResumen();
   } catch (e) {
     setPill("local", "Sin conexión con la planilla");
@@ -129,7 +129,7 @@ async function loadRemote(quiet) {
 
 /* ---------- items ---------- */
 function mk(o) {
-  return { id: uid(), createdAt: Date.now(), fecha: o.fecha, tipo: o.tipo || "Gasto", desc: o.desc || "", monto: Math.round(o.monto * 100) / 100, medio: o.medio || DEF_MEDIO(), cat: o.cat ?? "", catSrc: o.catSrc || "auto", origen: o.origen || "página" };
+  return { id: uid(), createdAt: Date.now(), fecha: o.fecha, tipo: o.tipo || "Gasto", desc: o.desc || "", monto: Math.round(o.monto * 100) / 100, medio: o.medio || DEF_MEDIO(), cat: o.cat ?? "", catSrc: o.catSrc || "auto", origen: o.origen || "página", par: o.par || "" };
 }
 function addItems(list, origen) {
   if (!list.length) { toast("No encontré movimientos para agregar"); return; }
@@ -311,21 +311,22 @@ function render() {
     list.innerHTML = `<div class="empty"><h3>Nada pendiente</h3><p>Escribí tus gastos a la izquierda o subí el extracto del banco. Acá los revisás y con un toque se guardan en tu planilla.</p><div class="ex">cabi 3500<br>vea 143.860 santander<br>ayer kfc 18880</div></div>`;
   } else {
     list.innerHTML = queue.map((it) => {
-      const ing = it.tipo === "Ingreso"; if (ing) ti += it.monto; else tg += it.monto;
+      const ing = it.tipo === "Ingreso"; const tr = it.cat === TRANSF;
+      if (!tr) { if (ing) ti += it.monto; else tg += it.monto; }
       const noCat = !ing && !it.cat; if (noCat) unk++;
       const auto = categorize(it.desc);
-      const learn = !ing && it.cat && it.catSrc !== "auto" && auto !== it.cat;
+      const learn = !ing && !tr && it.cat && it.catSrc !== "auto" && auto !== it.cat;
       const word = (norm(it.desc).match(/[a-zñ]{3,}/) || [""])[0];
       const meta = [seen.get(dupKey(it)) > 1 ? `<span class="chip warn">¿Repetido?</span>` : "",
         learn && word ? `<button class="chip learn" data-learn="${esc(word)}" data-cat="${esc(it.cat)}">Recordar: «${esc(word)}» → ${esc(it.cat)}</button>` : ""].join("");
-      return `<div class="item ${ing ? "ing" : ""}" data-id="${it.id}">
+      return `<div class="item ${ing ? "ing" : ""} ${tr ? "tr" : ""}" data-id="${it.id}">
         <input class="f-date" type="date" value="${it.fecha}" data-f="fecha" aria-label="Fecha">
         <input class="f-desc" value="${esc(it.desc)}" data-f="desc" aria-label="Descripción">
         <input class="f-amt amt" inputmode="decimal" value="${(ing ? "+" : "") + it.monto.toLocaleString("es-AR", { maximumFractionDigits: 2 })}" data-f="monto" aria-label="Monto">
         <select class="f-medio" data-f="medio" aria-label="Medio">${selOpts(CUENTAS(), it.medio)}</select>
-        <select class="f-cat ${noCat ? "cat-unk" : ""}" data-f="cat" aria-label="Categoría">${ing ? `<option value="">INGRESO</option>` : `<option value="" ${noCat ? "selected" : ""}>SIN CATEGORÍA</option>` + selOpts(CATS(), it.cat)}</select>
+        <select class="f-cat ${noCat ? "cat-unk" : ""}" data-f="cat" aria-label="Categoría" ${tr ? "disabled" : ""}>${tr ? `<option>TRANSFERENCIA</option>` : ing ? `<option value="">INGRESO</option>` : `<option value="" ${noCat ? "selected" : ""}>SIN CATEGORÍA</option>` + selOpts(CATS(), it.cat)}</select>
         <button class="x" data-del aria-label="Borrar">×</button>
-        <div class="meta"><button class="tipo ${ing ? "ing" : ""}" data-tipo>${ing ? "Ingreso" : "Gasto"}</button>${meta}</div>
+        <div class="meta">${tr ? `<span class="chip tr">${ing ? "Entra por transferencia" : "Sale por transferencia"}</span>` : `<button class="tipo ${ing ? "ing" : ""}" data-tipo>${ing ? "Ingreso" : "Gasto"}</button>`}${meta}</div>
       </div>`;
     }).join("");
   }
@@ -346,12 +347,19 @@ $("#list").addEventListener("change", (e) => {
   if (f === "fecha" && !v) { render(); return; }
   it[f] = v;
   if (f === "cat") it.catSrc = "manual";
+  if (f === "monto" && it.par && it.cat === TRANSF) queue.forEach((o) => { if (o.par === it.par && o !== it && o.cat === TRANSF) o.monto = v; });
+  if (f === "fecha" && it.par) queue.forEach((o) => { if (o.par === it.par) o.fecha = v; });
   if (f === "desc" && it.catSrc === "auto" && it.tipo !== "Ingreso") it.cat = categorize(v);
   saveQueue(); render();
 });
 $("#list").addEventListener("click", (e) => {
   const it = findItem(e.target); if (!it) return;
   if (e.target.closest("[data-del]")) {
+    if (it.par) {
+      const antes = queue.slice(); queue = queue.filter((o) => o.par !== it.par); saveQueue(); render();
+      toast("Transferencia borrada", () => { queue = antes; saveQueue(); render(); });
+      return;
+    }
     const i = queue.indexOf(it); queue.splice(i, 1); saveQueue(); render();
     toast("Movimiento borrado", () => { queue.splice(i, 0, it); saveQueue(); render(); });
   } else if (e.target.closest("[data-tipo]")) {
@@ -405,6 +413,7 @@ $("#mref").onclick = () => loadRemote(false);
 
 /* ---------- saldos ---------- */
 function renderSaldos(sd) {
+  lastSaldos = sd || null; if (lastTarjeta) renderApartar();
   const box = $("#saldos");
   if (!sd || !sd.cuentas) { box.hidden = true; $("#plata").hidden = true; return; }
   box.hidden = false;
@@ -428,6 +437,45 @@ $("#sgo").onclick = async () => {
   b.disabled = false; b.textContent = "Guardar saldo";
 };
 
+/* ---------- transferencias ---------- */
+const TRANSF = "TRANSFERENCIAS";
+const NARANJA = () => CUENTAS().find((c) => /naranja/i.test(c));
+function fillTransfer() {
+  const cs = CUENTAS();
+  $("#trdesde").innerHTML = selOpts(cs, $("#trdesde").value || DEF_MEDIO());
+  $("#trhacia").innerHTML = selOpts(cs, $("#trhacia").value || NARANJA() || cs.find((c) => c !== DEF_MEDIO()));
+  if (!$("#trfecha").value) $("#trfecha").value = iso(today());
+}
+function transferPreview() {
+  const desde = $("#trdesde").value, hacia = $("#trhacia").value;
+  const monto = Math.abs(parseAmount($("#trmonto").value)); const inte = Math.abs(parseAmount($("#trint").value)) || 0;
+  const box = $("#trprev");
+  if (desde === hacia) { box.hidden = false; box.className = "notice warn"; box.textContent = "Elegí dos cuentas distintas."; $("#tradd").disabled = true; return null; }
+  if (!monto) { box.hidden = true; $("#tradd").disabled = true; return null; }
+  if (inte >= monto) { box.hidden = false; box.className = "notice warn"; box.textContent = "Los intereses tienen que ser menos que el monto que transferís."; $("#tradd").disabled = true; return null; }
+  box.hidden = false; box.className = "notice";
+  box.innerHTML = `Sale <b>${fmtMoney(monto)}</b> de ${esc(desde)} y entra en ${esc(hacia)}.` + (inte ? ` Antes se suman <b>${fmtMoney(inte)}</b> de intereses en ${esc(desde)}, que sí cuentan como ingreso.` : "");
+  $("#tradd").disabled = false;
+  return { desde, hacia, monto, inte, fecha: $("#trfecha").value || iso(today()) };
+}
+["#trmonto", "#trint"].forEach((s) => $(s).addEventListener("input", transferPreview));
+["#trdesde", "#trhacia", "#trfecha"].forEach((s) => $(s).addEventListener("change", transferPreview));
+$("#tradd").onclick = () => {
+  const t = transferPreview(); if (!t) return;
+  const par = uid(); const items = [];
+  if (t.inte) items.push(mk({ fecha: t.fecha, tipo: "Ingreso", desc: `Intereses ${t.desde}`, monto: t.inte, medio: t.desde, cat: "", catSrc: "manual", par }));
+  items.push(mk({ fecha: t.fecha, tipo: "Gasto", desc: `Transferencia a ${t.hacia}`, monto: t.monto, medio: t.desde, cat: TRANSF, catSrc: "manual", par }));
+  items.push(mk({ fecha: t.fecha, tipo: "Ingreso", desc: `Transferencia desde ${t.desde}`, monto: t.monto, medio: t.hacia, cat: TRANSF, catSrc: "manual", par }));
+  addItems(items, "transferencia");
+  $("#trmonto").value = ""; $("#trint").value = ""; transferPreview();
+  document.getElementById("queuecard").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+function abrirTransferencia(desde, hacia, monto) {
+  go("cargar"); $("#t-transferir").click(); fillTransfer();
+  $("#trdesde").value = desde; $("#trhacia").value = hacia; $("#trmonto").value = monto ? monto.toLocaleString("es-AR", { maximumFractionDigits: 2 }) : ""; $("#trint").value = "";
+  transferPreview(); setTimeout(() => $("#trmonto").focus(), 50);
+}
+
 /* ---------- tarjeta ---------- */
 let lastTarjeta = null;
 function mesLabel(ym) { const [y, m] = ym.split("-"); return `${MESES[+m - 1].slice(0, 3)} ${y}`; }
@@ -440,10 +488,24 @@ function renderTarjeta(t) {
   $("#tv1").textContent = fmtMoney(t.esteMes); $("#tv2").textContent = fmtMoney(t.proximo); $("#tv3").textContent = fmtMoney(t.deuda);
   $("#tpay").disabled = !(t.porDonde && t.porDonde.Tarjeta > 0);
   $("#tpay").textContent = t.porDonde && t.porDonde.Tarjeta > 0 ? `Cargar pago del resumen (${fmtMoney(t.porDonde.Tarjeta)})` : "Nada que pagar este mes";
+  renderApartar();
   $("#tlist").innerHTML = (t.compras || []).map((c) => {
     const estado = c.actual >= 1 ? `cuota ${c.actual}/${c.cuotas}` : `arranca ${mesLabel(c.primerMes)}`;
     return `<div><span class="q">${estado}</span><span class="s">${esc(c.compra)} <small class="hint">· ${esc(c.donde)}</small></span><span class="m">${fmtMoney(c.precio)}</span></div>`;
   }).join("") || `<p class="hint">No tenés cuotas activas.</p>`;
+}
+let lastSaldos = null;
+function renderApartar() {
+  const nar = NARANJA(); const box = $("#apartar");
+  if (!nar || !lastTarjeta) { box.hidden = true; return; }
+  box.hidden = false;
+  const enNar = lastSaldos ? ((lastSaldos.cuentas || []).find((c) => c.cuenta === nar) || { saldo: 0 }).saldo : 0;
+  const cuota = lastTarjeta.porDonde && lastTarjeta.porDonde.Tarjeta > 0 ? lastTarjeta.porDonde.Tarjeta : lastTarjeta.proximo;
+  $("#apinfo").textContent = `Tenés ${fmtMoney(enNar)} en ${nar}. ` + (cuota > 0 ? `La próxima cuota es de ${fmtMoney(cuota)}.` : "No hay cuotas por pagar.");
+  $("#apin").textContent = `Apartar en ${nar}`;
+  $("#apin").onclick = () => abrirTransferencia(DEF_MEDIO(), nar, Math.max(0, cuota - enNar) || cuota);
+  $("#apout").disabled = !(enNar > 0);
+  $("#apout").onclick = () => abrirTransferencia(nar, DEF_MEDIO(), enNar);
 }
 $("#tpay").onclick = () => {
   if (!lastTarjeta || !(lastTarjeta.porDonde.Tarjeta > 0)) return;
@@ -636,4 +698,4 @@ function toast(msg, undo) {
   t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), undo ? 6000 : 4000);
 }
 
-showView(); fillSelects(); fillMeses(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);
+showView(); fillSelects(); fillMeses(); fillTransfer(); render(); renderRules(); renderFijos(); quickPreview(); loadRemote(true);
